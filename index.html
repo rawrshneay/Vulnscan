@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VulnScan - Network Vulnerability Scanner</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0a0e14;
+      font-family: 'Courier New', Courier, monospace;
+      color: #00ff00;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    .terminal-container {
+      width: 100%;
+      max-width: 900px;
+      background: #000000;
+      border: 2px solid #333;
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(0, 255, 0, 0.15);
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      background: #1a1a1a;
+      padding: 10px 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #333;
+    }
+
+    .terminal-button {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .btn-close { background: #ff5f56; }
+    .btn-minimize { background: #ffbd2e; }
+    .btn-maximize { background: #27c93f; }
+
+    .terminal-title {
+      margin-left: 12px;
+      color: #888;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .terminal-body {
+      padding: 30px;
+      min-height: 500px;
+    }
+
+    .ascii-art {
+      color: #00ff00;
+      font-size: 10px;
+      line-height: 1.2;
+      margin-bottom: 20px;
+      text-align: center;
+      white-space: pre;
+      font-weight: bold;
+    }
+
+    .terminal-output {
+      margin-bottom: 20px;
+    }
+
+    .output-line {
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+
+    .prompt {
+      color: #00ff00;
+      font-weight: bold;
+    }
+
+    .prompt-user {
+      color: #00ffff;
+    }
+
+    .prompt-host {
+      color: #ffff00;
+    }
+
+    .text-cyan { color: #00ffff; }
+    .text-yellow { color: #ffff00; }
+    .text-red { color: #ff4444; }
+    .text-gray { color: #888; }
+    .text-white { color: #ffffff; }
+
+    .input-section {
+      margin-top: 30px;
+    }
+
+    .command-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .command-prompt {
+      color: #00ff00;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 16px;
+      outline: none;
+      padding: 5px;
+      caret-color: #00ff00;
+    }
+
+    input[type="text"]::placeholder {
+      color: #555;
+    }
+
+    .options-line {
+      display: flex;
+      gap: 30px;
+      margin: 15px 0;
+      padding-left: 30px;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #00ff00;
+    }
+
+    .checkbox-label {
+      color: #00ffff;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .button-line {
+      margin-top: 20px;
+      padding-left: 30px;
+    }
+
+    button {
+      background: transparent;
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      padding: 10px 30px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+      letter-spacing: 1px;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #00ff00;
+      color: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+    }
+
+    button:active {
+      transform: translateY(2px);
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 10px;
+      height: 18px;
+      background: #00ff00;
+      animation: blink 1s infinite;
+      margin-left: 2px;
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    .warning-box {
+      border: 1px solid #ff4444;
+      background: rgba(255, 68, 68, 0.1);
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+    }
+
+    .warning-title {
+      color: #ff4444;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .warning-text {
+      color: #ffaa44;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .info-box {
+      border: 1px solid #00ffff;
+      background: rgba(0, 255, 255, 0.05);
+      padding: 12px;
+      margin-top: 15px;
+      border-radius: 4px;
+    }
+
+    .info-text {
+      color: #00ffff;
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .terminal-body {
+        padding: 20px;
+      }
+
+      .ascii-art {
+        font-size: 6px;
+      }
+
+      .options-line {
+        flex-direction: column;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="terminal-container">
+    <div class="terminal-header">
+      <span class="terminal-button btn-close"></span>
+      <span class="terminal-button btn-minimize"></span>
+      <span class="terminal-button btn-maximize"></span>
+      <span class="terminal-title">VulnScan Terminal v1.0.0</span>
+    </div>
+    
+    <div class="terminal-body">
+      <div class="ascii-art">
+╦  ╦┬ ┬┬  ┌┐┌╔═╗┌─┐┌─┐┌┐┌
+╚╗╔╝│ ││  │││╚═╗│  ├─┤│││
+ ╚╝ └─┘┴─┘┘└┘╚═╝└─┘┴ ┴┘└┘
+Network Vulnerability Scanner</div>
+
+      <div class="terminal-output">
+        <div class="output-line">
+          <span class="text-cyan">┌──[</span><span class="prompt-user">root</span><span class="text-gray">@</span><span class="prompt-host">scanner</span><span class="text-cyan">]</span>
+        </div>
+        <div class="output-line">
+          <span class="text-cyan">└─$</span> <span class="text-white">Initializing VulnScan security toolkit...</span>
+        </div>
+        <div class="output-line text-gray">
+          [✓] Port scanner module loaded
+        </div>
+        <div class="output-line text-gray">
+          [✓] Banner grabbing enabled
+        </div>
+        <div class="output-line text-gray">
+          [✓] TLS/SSL analyzer ready
+        </div>
+        <div class="output-line text-gray">
+          [✓] Nmap integration detected
+        </div>
+        <div class="output-line text-gray">
+          [✓] Nikto vulnerability scanner available
+        </div>
+        <div class="output-line" style="margin-top: 15px;">
+          <span class="text-white">Ready to scan. Enter target host or IP address.</span>
+        </div>
+      </div>
+
+      <form action="/scan" method="post">
+        <div class="input-section">
+          <div class="command-line">
+            <span class="command-prompt">root@scanner:~#</span>
+            <input 
+              type="text" 
+              name="target" 
+              id="targetInput"
+              placeholder="example.com or 192.168.1.1" 
+              autofocus
+              required
+            >
+          </div>
+
+          <div class="options-line">
+            <label class="checkbox-wrapper">
+              <input type="checkbox" name="run_nmap" id="nmapCheck">
+              <span class="checkbox-label">[  ] Enable Nmap deep scan</span>
+            </label>
+            
+            <label class="checkbox-wrapper">
+              <input type="checkbox" name="run_nikto" id="niktoCheck">
+              <span class="checkbox-label">[  ] Enable Nikto web scanner</span>
+            </label>
+          </div>
+
+          <div class="button-line">
+            <button type="submit">EXECUTE SCAN</button>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <div class="info-text">
+            → Scan performs: TCP port scan, banner grabbing, TLS certificate check, HTTP header analysis
+          </div>
+        </div>
+
+        <div class="warning-box">
+          <div class="warning-title">⚠ LEGAL NOTICE</div>
+          <div class="warning-text">
+            Only scan systems you own or have explicit written permission to test.<br>
+            Unauthorized scanning may violate laws and regulations.
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Update checkbox labels when checked/unchecked
+    document.getElementById('nmapCheck').addEventListener('change', function(e) {
+      const label = e.target.nextElementSibling;
+      label.textContent = e.target.checked ? '[✓] Enable Nmap deep scan' : '[  ] Enable Nmap deep scan';
+    });
+
+    document.getElementById('niktoCheck').addEventListener('change', function(e) {
+      const label = e.target.nextElementSibling;
+      label.textContent = e.target.checked ? '[✓] Enable Nikto web scanner' : '[  ] Enable Nikto web scanner';
+    });
+
+    // Add terminal-style focus effect
+    const input = document.getElementById('targetInput');
+    input.addEventListener('focus', function() {
+      this.style.borderBottom = '1px solid #00ff00';
+    });
+    input.addEventListener('blur', function() {
+      this.style.borderBottom = 'none';
+    });
+  </script>
+</body>
+</html>
