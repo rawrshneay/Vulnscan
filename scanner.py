@@ -1,11 +1,11 @@
-# scanner.py
 """
-Flask Vulnerability Scanner — single-file with Nmap & Nikto integration.
+Flask Vulnerability Scanner — Terminal UI Edition
 
 Legal: Use only on systems you own or have written permission to test.
 
 Requirements (in your venv):
-    pip install flask requests python-dateutil python-nmap   # python-nmap optional
+    pip install flask requests python-dateutil python-nmap
+
 System tools (optional, recommended):
     nmap, nikto
 
@@ -15,13 +15,19 @@ Open:
     http://127.0.0.1:5000
 """
 
-from flask import Flask, request, render_template_string
-import socket, ssl, time, subprocess, shutil
+from flask import Flask, request, render_template_string, jsonify
+import socket
+import ssl
+import time
+import subprocess
+import shutil
 from datetime import datetime
 from dateutil import parser as dateparser
 
-# ---- App name shown in UI ----
-SCANNER_NAME = "VulnScan"   # change this to your preferred name
+# ---- Configuration ----
+SCANNER_NAME = "VulnScan"
+NMAP_TIMEOUT = 120
+NIKTO_TIMEOUT = 180
 
 # Try python-nmap
 try:
@@ -231,97 +237,345 @@ def analyze_findings(report):
     return recs
 
 # -------------------------
-# UI Templates
+# UI Template
 # -------------------------
-INDEX_HTML = f"""
-<!doctype html>
-<html>
+INDEX_HTML = """
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>{{{{ scanner_name }}}} — Vulnerability Scanner</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ scanner_name }} - Network Vulnerability Scanner</title>
   <style>
-    :root {{
-      --bg:#070b12; --panel:#0f172a; --ink:#e2e8f0; --muted:#94a3b8; --brand:#60a5fa; --accent:#22d3ee;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin:0; background: radial-gradient(1200px 600px at 70% -10%, #0a1a3a55, transparent), var(--bg);
-      color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:32px;
-    }}
-    .wrap {{ width: 100%; max-width: 920px; }}
-    .brand {{ text-align:center; margin-bottom:22px; }}
-    .brand h1 {{
-      margin:0; font-size: clamp(26px, 4vw, 40px); letter-spacing: .5px;
-      background: linear-gradient(90deg, var(--brand), var(--accent));
-      -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800;
-    }}
-    .brand .sub {{ color: var(--muted); margin-top:6px; font-size: 13px; }}
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-    .terminal {{
-      background: linear-gradient(180deg, #0b1024, #0b1221);
-      border: 1px solid #1f2a44; border-radius: 14px;
-      box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
+    body {
+      background: #0a0e14;
+      font-family: 'Courier New', Courier, monospace;
+      color: #00ff00;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       padding: 20px;
-    }}
-    .titlebar {{ display:flex; align-items:center; gap:8px; margin-bottom:14px; color:#93b5ff; font-size:12px; }}
-    .dot {{ width:10px; height:10px; border-radius:50%; background:#ef4444; box-shadow: 16px 0 0 #f59e0b, 32px 0 0 #22c55e; }}
-    .titlebar .path {{ color:#8ab4ff; }}
-    .form {{ display:flex; flex-direction:column; align-items:center; gap:14px; }}
-    .cmdbox {{ width:100%; background:#0b1023; border:1px solid #1d2a46; border-radius:12px; padding:16px; }}
-    .promptline {{ display:flex; align-items:center; justify-content:center; gap:10px; color:#a7f3d0; margin-bottom:10px; font-size:14px; }}
-    .promptline .host {{ color:#93c5fd; }}
-    input.cmd {{
-      width:100%; text-align:center; background: transparent; border: none; outline: none;
-      color: #e6eef8; font-size: clamp(16px, 2.4vw, 20px); caret-color: var(--brand); padding: 6px 2px;
-    }}
-    .actions {{ display:flex; justify-content:center; gap:10px; }}
-    .btn {{
-      appearance:none; border:none; cursor:pointer;
-      background: linear-gradient(90deg, var(--brand), var(--accent));
-      color:#0b1020; font-weight:700; letter-spacing:.4px;
-      padding:10px 16px; border-radius:10px; transition: transform .06s ease;
-    }}
-    .btn:active {{ transform: translateY(1px); }}
-    .help {{ color:var(--muted); font-size:12px; text-align:center; margin-top:8px; }}
-    .disclaimer {{ color:#fca5a5; font-size:12px; text-align:center; margin-top:6px; }}
-    footer {{ color:#7c8aa0; font-size:12px; text-align:center; margin-top:18px; }}
+      overflow-x: hidden;
+    }
+
+    .terminal-container {
+      width: 100%;
+      max-width: 900px;
+      background: #000000;
+      border: 2px solid #333;
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(0, 255, 0, 0.15);
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      background: #1a1a1a;
+      padding: 10px 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #333;
+    }
+
+    .terminal-button {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .btn-close { background: #ff5f56; }
+    .btn-minimize { background: #ffbd2e; }
+    .btn-maximize { background: #27c93f; }
+
+    .terminal-title {
+      margin-left: 12px;
+      color: #888;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .terminal-body {
+      padding: 30px;
+      min-height: 500px;
+    }
+
+    .ascii-art {
+      color: #00ff00;
+      font-size: 10px;
+      line-height: 1.2;
+      margin-bottom: 20px;
+      text-align: center;
+      white-space: pre;
+      font-weight: bold;
+    }
+
+    .terminal-output {
+      margin-bottom: 20px;
+    }
+
+    .output-line {
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+
+    .prompt-user {
+      color: #00ffff;
+    }
+
+    .prompt-host {
+      color: #ffff00;
+    }
+
+    .text-cyan { color: #00ffff; }
+    .text-gray { color: #888; }
+    .text-white { color: #ffffff; }
+
+    .input-section {
+      margin-top: 30px;
+    }
+
+    .command-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .command-prompt {
+      color: #00ff00;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 16px;
+      outline: none;
+      padding: 5px;
+      caret-color: #00ff00;
+    }
+
+    input[type="text"]::placeholder {
+      color: #555;
+    }
+
+    .options-line {
+      display: flex;
+      gap: 30px;
+      margin: 15px 0;
+      padding-left: 30px;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #00ff00;
+    }
+
+    .checkbox-label {
+      color: #00ffff;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .button-line {
+      margin-top: 20px;
+      padding-left: 30px;
+    }
+
+    button {
+      background: transparent;
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      padding: 10px 30px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+      letter-spacing: 1px;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #00ff00;
+      color: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+    }
+
+    button:active {
+      transform: translateY(2px);
+    }
+
+    .warning-box {
+      border: 1px solid #ff4444;
+      background: rgba(255, 68, 68, 0.1);
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+    }
+
+    .warning-title {
+      color: #ff4444;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .warning-text {
+      color: #ffaa44;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .info-box {
+      border: 1px solid #00ffff;
+      background: rgba(0, 255, 255, 0.05);
+      padding: 12px;
+      margin-top: 15px;
+      border-radius: 4px;
+    }
+
+    .info-text {
+      color: #00ffff;
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .terminal-body {
+        padding: 20px;
+      }
+
+      .ascii-art {
+        font-size: 6px;
+      }
+
+      .options-line {
+        flex-direction: column;
+        gap: 10px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="brand">
-      <h1>{{{{ scanner_name }}}}</h1>
-      <div class="sub">Defensive, permission-based network checks — educational use only</div>
+  <div class="terminal-container">
+    <div class="terminal-header">
+      <span class="terminal-button btn-close"></span>
+      <span class="terminal-button btn-minimize"></span>
+      <span class="terminal-button btn-maximize"></span>
+      <span class="terminal-title">{{ scanner_name }} Terminal v1.0.0</span>
     </div>
+    
+    <div class="terminal-body">
+      <div class="ascii-art">
+╦  ╦┬ ┬┬  ┌┐┌╔═╗┌─┐┌─┐┌┐┌
+╚╗╔╝│ ││  │││╚═╗│  ├─┤│││
+ ╚╝ └─┘┴─┘┘└┘╚═╝└─┘┴ ┴┘└┘
+Network Vulnerability Scanner</div>
 
-    <div class="terminal">
-      <div class="titlebar"><span class="dot"></span><span class="path">~/scanner</span></div>
-      <form class="form" method="post" action="{{{{ url_for('scan') }}}}">
-        <div class="cmdbox">
-          <div class="promptline"><span class="user">you@scanner</span><span class="host">~$</span><span>scan &lt;host or IPv4&gt;</span></div>
-          <input class="cmd" name="target" placeholder="example.com   |   192.0.2.1" autofocus>
+      <div class="terminal-output">
+        <div class="output-line">
+          <span class="text-cyan">┌──[</span><span class="prompt-user">root</span><span class="text-gray">@</span><span class="prompt-host">scanner</span><span class="text-cyan">]</span>
+        </div>
+        <div class="output-line">
+          <span class="text-cyan">└─$</span> <span class="text-white">Initializing {{ scanner_name }} security toolkit...</span>
+        </div>
+        <div class="output-line text-gray">
+          [✓] Port scanner module loaded
+        </div>
+        <div class="output-line text-gray">
+          [✓] Banner grabbing enabled
+        </div>
+        <div class="output-line text-gray">
+          [✓] TLS/SSL analyzer ready
+        </div>
+        <div class="output-line text-gray">
+          {% if nmap_available %}[✓] Nmap integration detected{% else %}[✗] Nmap not available{% endif %}
+        </div>
+        <div class="output-line text-gray">
+          {% if nikto_available %}[✓] Nikto vulnerability scanner available{% else %}[✗] Nikto not available{% endif %}
+        </div>
+        <div class="output-line" style="margin-top: 15px;">
+          <span class="text-white">Ready to scan. Enter target host or IP address.</span>
+        </div>
+      </div>
 
-          
-  <!-- THE OPTIONS ROW WITH CHECKBOXES -->
-  <div class="actions">
-    <div class="opts">
-      <label><input type="checkbox" name="run_nmap"> Run Nmap (slower)</label>
-      <label><input type="checkbox" name="run_nikto"> Run Nikto (slowest)</label>
-    </div>
-  </div>
+      <form method="post" action="{{ url_for('scan') }}">
+        <div class="input-section">
+          <div class="command-line">
+            <span class="command-prompt">root@scanner:~#</span>
+            <input 
+              type="text" 
+              name="target"
+              placeholder="example.com or 192.168.1.1" 
+              autofocus
+              required
+            >
+          </div>
+
+          <div class="options-line">
+            <label class="checkbox-wrapper">
+              <input type="checkbox" name="run_nmap" id="nmapCheck">
+              <span class="checkbox-label">[  ] Enable Nmap deep scan</span>
+            </label>
+            
+            <label class="checkbox-wrapper">
+              <input type="checkbox" name="run_nikto" id="niktoCheck">
+              <span class="checkbox-label">[  ] Enable Nikto web scanner</span>
+            </label>
+          </div>
+
+          <div class="button-line">
+            <button type="submit">EXECUTE SCAN</button>
+          </div>
         </div>
-        <div class="actions">
-          <button class="btn" type="submit">Run scan</button>
+
+        <div class="info-box">
+          <div class="info-text">
+            → Scan performs: TCP port scan, banner grabbing, TLS certificate check, HTTP header analysis
+          </div>
         </div>
-        <div class="help">Installs detected: nmap / nikto (optional). We only do safe, non-exploitative probes.</div>
-        <div class="disclaimer">Scan only systems you own or have explicit permission to test.</div>
+
+        <div class="warning-box">
+          <div class="warning-title">⚠ LEGAL NOTICE</div>
+          <div class="warning-text">
+            Only scan systems you own or have explicit written permission to test.<br>
+            Unauthorized scanning may violate laws and regulations.
+          </div>
+        </div>
       </form>
     </div>
-
-    <footer>{{{{ scanner_name }}}} &middot; Flask UI</footer>
   </div>
+
+  <script>
+    document.getElementById('nmapCheck').addEventListener('change', function(e) {
+      const label = e.target.nextElementSibling;
+      label.textContent = e.target.checked ? '[✓] Enable Nmap deep scan' : '[  ] Enable Nmap deep scan';
+    });
+
+    document.getElementById('niktoCheck').addEventListener('change', function(e) {
+      const label = e.target.nextElementSibling;
+      label.textContent = e.target.checked ? '[✓] Enable Nikto web scanner' : '[  ] Enable Nikto web scanner';
+    });
+  </script>
 </body>
 </html>
 """
@@ -333,21 +587,70 @@ REPORT_HTML = """
   <meta charset="utf-8">
   <title>{{ scanner_name }} — Report: {{ target }}</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; background:#0b1220; color:#e6eef8; padding:26px; }
+    body { 
+      font-family: 'Courier New', Courier, monospace; 
+      background:#0a0e14; 
+      color:#e6eef8; 
+      padding:26px; 
+    }
     .brand { text-align:center; margin-bottom:18px; }
-    .brand h1 { margin:0; font-size:28px; background: linear-gradient(90deg,#60a5fa,#22d3ee); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .brand h1 { 
+      margin:0; 
+      font-size:28px; 
+      background: linear-gradient(90deg,#00ff00,#00ffff); 
+      -webkit-background-clip:text; 
+      background-clip:text; 
+      color:transparent; 
+    }
     .brand .muted { color:#9fb1c7; font-size:12px; margin-top:6px; }
-    .card { background:#0f172a; border:1px solid #1f2a44; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.35); padding:18px; margin-bottom:14px; }
-    h2 { margin:0 0 10px 0; font-size:18px; color:#bfe1ff; }
-    h3 { margin:4px 0 8px; color:#c2e7ff; }
-    pre { background:#0b1120;color:#dbeafe;padding:12px;border-radius:8px;overflow:auto; }
+    .card { 
+      background:#000; 
+      border:1px solid #333; 
+      border-radius:12px; 
+      box-shadow:0 0 20px rgba(0,255,0,0.1); 
+      padding:18px; 
+      margin-bottom:14px; 
+    }
+    h2 { margin:0 0 10px 0; font-size:18px; color:#00ffff; }
+    h3 { margin:4px 0 8px; color:#00ff00; }
+    pre { 
+      background:#0b1120;
+      color:#00ff00;
+      padding:12px;
+      border-radius:8px;
+      overflow:auto;
+      border: 1px solid #1a1a1a;
+    }
     table { width:100%; border-collapse:collapse; }
-    td, th { padding:8px; border-bottom:1px solid #1e2b4a; text-align:left; vertical-align:top; }
-    .open { color:#34d399; font-weight:600; }
-    .closed { color:#94a3b8; }
-    .muted { color:#9fb1c7; font-size:13px; }
-    .json { font-family: monospace; font-size:13px; background:#0b1221; color:#d6e7ff; padding:10px; border-radius:8px; overflow:auto; }
-    .btn-back { display:inline-block; margin-bottom:12px; padding:8px 10px; background:#2563eb; color:white; border-radius:8px; text-decoration:none; }
+    td, th { padding:8px; border-bottom:1px solid #1a1a1a; text-align:left; vertical-align:top; }
+    .open { color:#00ff00; font-weight:600; }
+    .closed { color:#555; }
+    .muted { color:#888; font-size:13px; }
+    .json { 
+      font-family: 'Courier New', monospace; 
+      font-size:12px; 
+      background:#0b1221; 
+      color:#00ff00; 
+      padding:10px; 
+      border-radius:8px; 
+      overflow:auto; 
+    }
+    .btn-back { 
+      display:inline-block; 
+      margin-bottom:12px; 
+      padding:10px 20px; 
+      background:transparent;
+      border: 2px solid #00ffff;
+      color:#00ffff; 
+      border-radius:8px; 
+      text-decoration:none;
+      font-family: 'Courier New', Courier, monospace;
+      transition: all 0.3s;
+    }
+    .btn-back:hover {
+      background: #00ffff;
+      color: #000;
+    }
   </style>
 </head>
 <body>
@@ -356,11 +659,14 @@ REPORT_HTML = """
     <div class="muted">Report for <strong>{{ target }}</strong> &middot; scanned at {{ scanned_at }}</div>
   </div>
 
-  <a class="btn-back" href="{{ url_for('index') }}">&larr; New scan</a>
+  <a class="btn-back" href="{{ url_for('index') }}">&larr; NEW SCAN</a>
 
   <div class="card">
-    <h2>Scan summary</h2>
-    <p><strong>Resolved IP:</strong> {{ report.resolved_ip or 'N/A' }} {% if report.reverse_dns %}(<em>{{ report.reverse_dns }}</em>){% endif %}</p>
+    <h2>SCAN SUMMARY</h2>
+    <p><strong>Target:</strong> {{ target }}</p>
+    <p><strong>Resolved IP:</strong> {{ report.resolved_ip or 'N/A' }} 
+      {% if report.reverse_dns %}(<em>{{ report.reverse_dns }}</em>){% endif %}
+    </p>
     <p><strong>Open ports:</strong>
       {% if open_ports|length %}
         {% for p in open_ports %}
@@ -373,16 +679,29 @@ REPORT_HTML = """
   </div>
 
   <div class="card">
-    <h2>Ports & banners</h2>
+    <h2>PORTS & BANNERS</h2>
     <table>
-      <thead><tr><th style="width:80px">Port</th><th style="width:80px">Status</th><th style="width:100px">RTT (s)</th><th>Banner / Notes</th></tr></thead>
+      <thead>
+        <tr>
+          <th style="width:80px">Port</th>
+          <th style="width:80px">Status</th>
+          <th style="width:100px">RTT (s)</th>
+          <th>Banner / Notes</th>
+        </tr>
+      </thead>
       <tbody>
       {% for port, v in report.ports|dictsort %}
         <tr>
           <td>{{ port }}</td>
-          <td>{% if v.open %}<span class="open">open</span>{% else %}<span class="closed">closed</span>{% endif %}</td>
+          <td>
+            {% if v.open %}
+              <span class="open">OPEN</span>
+            {% else %}
+              <span class="closed">CLOSED</span>
+            {% endif %}
+          </td>
           <td>{{ v.rtt_s or '-' }}</td>
-          <td><pre style="white-space:pre-wrap">{{ v.banner or '' }}</pre></td>
+          <td><pre style="white-space:pre-wrap; margin:0;">{{ v.banner or '' }}</pre></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -404,7 +723,7 @@ REPORT_HTML = """
   </div>
 
   <div class="card">
-    <h2>HTTP headers (if reachable)</h2>
+    <h2>HTTP HEADERS</h2>
     {% if report.http %}
       {% if report.http.error %}
         <p class="muted">HTTP fetch error: {{ report.http.error }}</p>
@@ -418,7 +737,7 @@ REPORT_HTML = """
   </div>
 
   <div class="card">
-    <h2>Nmap (optional)</h2>
+    <h2>NMAP SCAN</h2>
     {% if report.nmap %}
       {% if report.nmap.available %}
         <p class="muted">Method: {{ report.nmap.method }}</p>
@@ -427,12 +746,12 @@ REPORT_HTML = """
         <p class="muted">Nmap not available: {{ report.nmap.error }}</p>
       {% endif %}
     {% else %}
-      <p class="muted">Nmap not run.</p>
+      <p class="muted">Nmap scan not requested.</p>
     {% endif %}
   </div>
 
   <div class="card">
-    <h2>Nikto (optional)</h2>
+    <h2>NIKTO SCAN</h2>
     {% if report.nikto %}
       {% if report.nikto.cli_present %}
         {% for r in report.nikto.reports %}
@@ -453,12 +772,12 @@ REPORT_HTML = """
         <p class="muted">Nikto CLI not found on this system.</p>
       {% endif %}
     {% else %}
-      <p class="muted">Nikto not run.</p>
+      <p class="muted">Nikto scan not requested.</p>
     {% endif %}
   </div>
 
   <div class="card">
-    <h2>Recommendations</h2>
+    <h2>RECOMMENDATIONS</h2>
     <ul>
       {% for r in report.recommendations %}
         <li>{{ r }}</li>
@@ -467,7 +786,7 @@ REPORT_HTML = """
   </div>
 
   <div class="card">
-    <h2>Raw JSON</h2>
+    <h2>RAW JSON DATA</h2>
     <pre class="json">{{ report | tojson(indent=2) }}</pre>
   </div>
 
@@ -480,7 +799,12 @@ REPORT_HTML = """
 # -------------------------
 @app.route('/')
 def index():
-    return render_template_string(INDEX_HTML, scanner_name=SCANNER_NAME)
+    return render_template_string(
+        INDEX_HTML, 
+        scanner_name=SCANNER_NAME,
+        nmap_available=(HAVE_PYTHON_NMAP or NMAP_CLI),
+        nikto_available=bool(NIKTO_CLI)
+    )
 
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -488,6 +812,7 @@ def scan():
     scanned_at = datetime.utcnow().isoformat() + 'Z'
     run_nmap_flag  = request.form.get('run_nmap') == 'on'
     run_nikto_flag = request.form.get('run_nikto') == 'on'
+    
     report = {
         'target': target,
         'scanned_at': scanned_at,
@@ -543,38 +868,34 @@ def scan():
         report['http_error'] = str(e)
 
     # Nmap (optional)
-    # Nmap (optional; can be slow)
     try:
         if run_nmap_flag:
-          report['nmap'] = run_nmap_scan(ip, COMMON_PORTS, timeout=NMAP_TIMEOUT)
+            report['nmap'] = run_nmap_scan(ip, COMMON_PORTS, timeout=NMAP_TIMEOUT)
         else:
-          report['nmap'] = None
+            report['nmap'] = None
     except Exception as e:
-      report['nmap_error'] = str(e)
-
+        report['nmap_error'] = str(e)
 
     # Nikto (optional)
-    # Nikto (optional; slowest)
     try:
         if run_nikto_flag:
-          nikto_runs = []
-        if report['ports'].get(443,{}).get('open'):
-          nikto_runs.append({'port': 443, 'https': True})
-        if report['ports'].get(80,{}).get('open'):
-          nikto_runs.append({'port': 80, 'https': False})
-        if report['ports'].get(8080,{}).get('open'):
-          nikto_runs.append({'port': 8080, 'https': False})
-        nikto_reports = []
-        for r in nikto_runs:
-            target_host = target
-            nr = run_nikto_scan(target_host, r['port'], https=r['https'], timeout=NIKTO_TIMEOUT)
-            nikto_reports.append({'port': r['port'], 'https': r['https'], 'result': nr})
+            nikto_runs = []
+            if report['ports'].get(443,{}).get('open'):
+                nikto_runs.append({'port': 443, 'https': True})
+            if report['ports'].get(80,{}).get('open'):
+                nikto_runs.append({'port': 80, 'https': False})
+            if report['ports'].get(8080,{}).get('open'):
+                nikto_runs.append({'port': 8080, 'https': False})
+            nikto_reports = []
+            for r in nikto_runs:
+                target_host = target
+                nr = run_nikto_scan(target_host, r['port'], https=r['https'], timeout=NIKTO_TIMEOUT)
+                nikto_reports.append({'port': r['port'], 'https': r['https'], 'result': nr})
             report['nikto'] = {'available': bool(nikto_reports), 'reports': nikto_reports, 'cli_present': bool(NIKTO_CLI)}
         else:
             report['nikto'] = None
     except Exception as e:
-      report['nikto_error'] = str(e)
-
+        report['nikto_error'] = str(e)
 
     # Recommendations
     try:
@@ -582,7 +903,7 @@ def scan():
     except Exception:
         report['recommendations'] = ["Analysis error."]
 
-    # Compute open ports for the template (avoid Jinja 'do' extension)
+    # Compute open ports for the template
     open_ports = sorted([p for p, v in report['ports'].items() if v.get('open')])
 
     return render_template_string(
@@ -595,5 +916,6 @@ def scan():
     )
 
 if __name__ == '__main__':
-    # Set debug=True while developing to see tracebacks in the terminal
+    print(f"Starting {SCANNER_NAME} on http://127.0.0.1:5000")
+    print("Press CTRL+C to quit")
     app.run(host='127.0.0.1', port=5000, debug=True)
